@@ -1,13 +1,12 @@
 [
   {
     "id": "dorothy",
-    "name": "Miles",
+    "name": "Roy",
     "age": 78,
-    "background": "former school librarian",
+    "background": "Spaceship toilet cleaner",
     "interests": [
-      "roses",
-      "birds",
-      "BBC period dramas"
+      "anime",
+      "netflix"
     ],
     "family": [
       {

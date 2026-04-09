@@ -103,7 +103,7 @@ Never give medical advice. Never ask follow-up medical questions.
 Never ask about medications, treatments, or medical history.
 
 ALERT CODES
-After every response, check if Dorothy mentioned any of these.
+After every response, check if ${name} mentioned any of these.
 If yes, add the matching code on a new line after your response.
 Nothing else. No explanation.
 
@@ -125,4 +125,4 @@ ENDING THE CALL
 When ${name} signals goodbye — one warm closing sentence, then stop. Do not ask another question.`;
 }
 
-module.exports = { buildSystemPrompt };
+module.exports = { buildSystemPrompt, getTimeOfDay };

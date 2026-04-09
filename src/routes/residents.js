@@ -1,6 +1,7 @@
 const { getAllResidents, getResidentById, createResident, updateResident } = require('../services/residentService');
 const { buildSystemPrompt } = require('../prompts/systemPrompt');
 const { getCallsByResident } = require('../services/callService');
+const { updateAssistantPrompt } = require('../services/vapiService');
 
 async function residentRoutes(fastify) {
 
@@ -26,7 +27,15 @@ async function residentRoutes(fastify) {
   fastify.patch('/residents/:id', async (request, reply) => {
     const resident = updateResident(request.params.id, request.body);
     if (!resident) return reply.code(404).send({ error: 'Resident not found' });
-    return reply.send(resident);
+
+    try {
+      await updateAssistantPrompt(resident.id);
+      console.log(`🔄 VAPI prompt auto-updated for resident: ${resident.name}`);
+      return reply.send({ resident, vapiUpdated: true });
+    } catch (error) {
+      console.error(`❌ VAPI auto-update failed for ${resident.name}:`, error.message);
+      return reply.send({ resident, vapiUpdated: false, vapiError: error.message });
+    }
   });
 
   // GET /residents/:id/prompt-preview

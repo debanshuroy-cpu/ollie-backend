@@ -1,7 +1,8 @@
 const { parseAlerts } = require('../services/alertParser');
 const { saveCall, updateCall, detectAlertsFromMessages, mergeAlerts } = require('../services/callService');
+const { getResidentById } = require('../services/residentService');
 
-async function generateSummary(transcriptText) {
+async function generateSummary(transcriptText, residentName) {
   const response = await fetch('http://localhost:11434/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -10,8 +11,9 @@ async function generateSummary(transcriptText) {
       messages: [
         {
           role: 'user',
-          content: `You are summarising a call between Ollie, an AI companion, and Dorothy, a 78 year old resident in a senior care facility.
+          content: `You are summarising a call between Ollie, an AI companion, and ${residentName}, a resident in a senior care facility.
 Summarise this conversation in 2-3 sentences from a caregiver's perspective. Note any health concerns, emotional signals, or important topics discussed. Be concise and factual.
+Only refer to the resident as ${residentName}.
 
 Transcript:
 ${transcriptText}`
@@ -103,12 +105,15 @@ async function webhookRoutes(fastify) {
         console.log(`💾 Call saved — ID: ${callRecord.id}`);
 
         // Generate summary non-blocking — don't let failure break the webhook response
+        const resident = getResidentById(callRecord.residentId);
+        const residentName = resident?.name || callRecord.residentId;
+
         const transcriptText = artifactMessages
-          .filter(m => m.role === 'user' || m.role === 'bot' || m.role === 'assistant')
-          .map(m => `${m.role === 'bot' ? 'Ollie' : 'Dorothy'}: ${m.message || m.content || ''}`)
+          .filter(m => m.role === 'user' || m.role === 'bot')
+          .map(m => `${m.role === 'bot' ? 'Ollie' : residentName}: ${m.message || m.content || ''}`)
           .join('\n');
 
-        generateSummary(transcriptText)
+        generateSummary(transcriptText, residentName)
           .then(summary => {
             updateCall(callRecord.id, { summary });
             console.log(`📋 Summary generated for call ${callRecord.id}`);

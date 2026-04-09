@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { buildSystemPrompt } = require('../prompts/systemPrompt');
+const { buildSystemPrompt, getTimeOfDay } = require('../prompts/systemPrompt');
 const { getResidentById, getAllResidents } = require('./residentService');
 
 const VAPI_BASE_URL = 'https://api.vapi.ai';
@@ -82,8 +82,18 @@ async function updateAssistantPrompt(residentId) {
   const systemPrompt = buildSystemPrompt(resident);
   const assistantId = process.env.VAPI_ASSISTANT_ID || '14a75005-8f1a-4f9e-89f9-aa9c04dcd378';
 
+  const timeOfDay = getTimeOfDay();
+  const firstMessageMap = {
+    morning:   `Good morning, ${resident.name}! How did you sleep last night?`,
+    afternoon: `Good afternoon, ${resident.name}! How has your day been so far?`,
+    evening:   `Good evening, ${resident.name}! How are you feeling tonight?`,
+    night:     `Hello ${resident.name}, I hope you're resting well.`
+  };
+
   try {
     const response = await vapiClient.patch(`/assistant/${assistantId}`, {
+      firstMessage: firstMessageMap[timeOfDay],
+      endCallMessage: `It was so lovely chatting with you ${resident.name}, take good care of yourself.`,
       model: {
         provider: "custom-llm",
         url: process.env.CUSTOM_LLM_URL,
