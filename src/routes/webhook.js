@@ -1,5 +1,33 @@
 const { parseAlerts } = require('../services/alertParser');
-const { saveCall } = require('../services/callService');
+const { saveCall, updateCall, detectAlertsFromMessages, mergeAlerts } = require('../services/callService');
+
+async function generateSummary(transcriptText) {
+  const response = await fetch('http://localhost:11434/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: process.env.OLLAMA_MODEL || 'llama3.2',
+      messages: [
+        {
+          role: 'user',
+          content: `You are summarising a call between Ollie, an AI companion, and Dorothy, a 78 year old resident in a senior care facility.
+Summarise this conversation in 2-3 sentences from a caregiver's perspective. Note any health concerns, emotional signals, or important topics discussed. Be concise and factual.
+
+Transcript:
+${transcriptText}`
+        }
+      ],
+      stream: false
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama returned ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content.trim();
+}
 
 async function webhookRoutes(fastify) {
 
@@ -32,34 +60,63 @@ async function webhookRoutes(fastify) {
       case 'end-of-call-report': {
         console.log(`📴 Call ended — Duration: ${payload.call?.duration}s`);
 
-        const assistantText = (payload.artifact?.messages || [])
-          .filter(m => m.role === 'assistant')
+        const artifactMessages = payload.artifact?.messages || [];
+
+        // Option A: parse ##ALERT codes from assistant messages (LLM-generated)
+        const assistantText = artifactMessages
+          .filter(m => m.role === 'assistant' || m.role === 'bot')
           .map(m => m.message || m.content || '')
           .join(' ');
+        const llmAlerts = parseAlerts(assistantText);
 
-        const alerts = parseAlerts(assistantText);
+        // Option B: scan user messages directly for health signal keywords
+        const keywordAlerts = detectAlertsFromMessages(artifactMessages);
+
+        // Merge — deduplicate by type, keyword alerts take precedence
+        const alerts = mergeAlerts(llmAlerts, keywordAlerts);
+
         if (alerts.length > 0) {
           console.log('🚨 End-of-call alerts:', alerts);
         }
 
-        const summary = payload.analysis?.summary || null;
-        if (summary) console.log('📋 Summary:', summary);
+        const firstTime = artifactMessages[0]?.time;
+        const lastTime = artifactMessages[artifactMessages.length - 1]?.time;
+        const startedAt = firstTime ? new Date(firstTime).toISOString() : null;
+        const endedAt = lastTime ? new Date(lastTime).toISOString() : null;
+        const duration = (firstTime && lastTime) ? Math.round((lastTime - firstTime) / 1000) : null;
+        const endedReason = payload.message?.endedReason || payload.endedReason || null;
 
         const callRecord = {
           id: payload.call?.id,
           residentId: 'dorothy',
-          startedAt: payload.call?.startedAt,
-          endedAt: payload.call?.endedAt,
-          duration: payload.call?.duration,
-          endedReason: payload.call?.endedReason,
-          messages: payload.artifact?.messages,
+          startedAt,
+          endedAt,
+          duration,
+          endedReason,
+          messages: artifactMessages,
           transcript: payload.artifact?.transcript,
-          summary,
+          summary: null,
           alerts
         };
 
         saveCall(callRecord);
         console.log(`💾 Call saved — ID: ${callRecord.id}`);
+
+        // Generate summary non-blocking — don't let failure break the webhook response
+        const transcriptText = artifactMessages
+          .filter(m => m.role === 'user' || m.role === 'bot' || m.role === 'assistant')
+          .map(m => `${m.role === 'bot' ? 'Ollie' : 'Dorothy'}: ${m.message || m.content || ''}`)
+          .join('\n');
+
+        generateSummary(transcriptText)
+          .then(summary => {
+            updateCall(callRecord.id, { summary });
+            console.log(`📋 Summary generated for call ${callRecord.id}`);
+          })
+          .catch(err => {
+            console.error(`❌ Summary generation failed for call ${callRecord.id}:`, err.message);
+          });
+
         break;
       }
 

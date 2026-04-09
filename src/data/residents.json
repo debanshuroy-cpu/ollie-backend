@@ -1,10 +1,14 @@
 [
   {
     "id": "dorothy",
-    "name": "Dorothy",
+    "name": "Miles",
     "age": 78,
     "background": "former school librarian",
-    "interests": ["roses", "birds", "BBC period dramas"],
+    "interests": [
+      "roses",
+      "birds",
+      "BBC period dramas"
+    ],
     "family": [
       {
         "name": "Sarah",
@@ -19,7 +23,13 @@
         "visitPattern": "calls Sundays"
       }
     ],
-    "healthNotes": ["mild arthritis in left knee", "tends to downplay pain"],
-    "personalTopics": ["late husband Gerald", "her old garden"]
+    "healthNotes": [
+      "mild arthritis in left knee",
+      "tends to downplay pain"
+    ],
+    "personalTopics": [
+      "late husband Gerald",
+      "her old garden"
+    ]
   }
 ]
