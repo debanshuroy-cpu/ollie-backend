@@ -1,5 +1,6 @@
 const { getAllResidents, getResidentById, createResident, updateResident } = require('../services/residentService');
 const { buildSystemPrompt } = require('../prompts/systemPrompt');
+const { getCallsByResident } = require('../services/callService');
 
 async function residentRoutes(fastify) {
 
@@ -34,6 +35,24 @@ async function residentRoutes(fastify) {
     if (!resident) return reply.code(404).send({ error: 'Resident not found' });
     const prompt = buildSystemPrompt(resident);
     return reply.send({ residentId: resident.id, residentName: resident.name, prompt });
+  });
+
+  // GET /residents/:id/calls
+  fastify.get('/residents/:id/calls', async (request, reply) => {
+    const resident = getResidentById(request.params.id);
+    if (!resident) return reply.code(404).send({ error: 'Resident not found' });
+    const calls = getCallsByResident(request.params.id);
+    return reply.send(calls);
+  });
+
+  // GET /residents/:id/calls/latest
+  fastify.get('/residents/:id/calls/latest', async (request, reply) => {
+    const resident = getResidentById(request.params.id);
+    if (!resident) return reply.code(404).send({ error: 'Resident not found' });
+    const calls = getCallsByResident(request.params.id);
+    if (calls.length === 0) return reply.code(404).send({ error: 'No calls found' });
+    const latest = calls[calls.length - 1];
+    return reply.send(latest);
   });
 }
 

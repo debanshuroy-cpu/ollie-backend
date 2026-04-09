@@ -1,4 +1,5 @@
 const { parseAlerts } = require('../services/alertParser');
+const { saveCall } = require('../services/callService');
 
 async function webhookRoutes(fastify) {
 
@@ -6,39 +7,72 @@ async function webhookRoutes(fastify) {
   fastify.post('/webhook/vapi', async (request, reply) => {
     const event = request.body;
 
-    fastify.log.info({ type: event.type }, 'VAPI webhook received');
+    const payload = event.message || event;
+    const type = payload.type;
 
-    switch (event.type) {
+    fastify.log.info({ type }, 'VAPI webhook received');
+    console.log('VAPI event type received:', type, JSON.stringify(event).slice(0, 300));
 
-      case 'call-started':
-        console.log(`📞 Call started — Call ID: ${event.call?.id}`);
-        break;
+    switch (type) {
 
-      case 'transcript':
-        // Real-time transcript — parse alerts as they come in
-        if (event.transcript?.role === 'assistant') {
-          const alerts = parseAlerts(event.transcript.text || '');
+      case 'conversation-update':
+        // Parse real-time alerts from assistant messages
+        if (payload.conversation) {
+          const assistantMessages = payload.conversation
+            .filter(m => m.role === 'assistant')
+            .map(m => m.content || '')
+            .join(' ');
+          const alerts = parseAlerts(assistantMessages);
           if (alerts.length > 0) {
             console.log('🚨 Alerts detected mid-call:', alerts);
-            // Layer 2: store alerts in database here
           }
         }
         break;
 
-      case 'call-ended':
-        console.log(`📴 Call ended — Duration: ${event.call?.duration}s`);
-        const summary = event.analysis?.summary;
-        const transcript = event.transcript;
+      case 'end-of-call-report': {
+        console.log(`📴 Call ended — Duration: ${payload.call?.duration}s`);
+
+        const assistantText = (payload.artifact?.messages || [])
+          .filter(m => m.role === 'assistant')
+          .map(m => m.message || m.content || '')
+          .join(' ');
+
+        const alerts = parseAlerts(assistantText);
+        if (alerts.length > 0) {
+          console.log('🚨 End-of-call alerts:', alerts);
+        }
+
+        const summary = payload.analysis?.summary || null;
         if (summary) console.log('📋 Summary:', summary);
-        // Layer 2: save transcript + summary to database here
+
+        const callRecord = {
+          id: payload.call?.id,
+          residentId: 'dorothy',
+          startedAt: payload.call?.startedAt,
+          endedAt: payload.call?.endedAt,
+          duration: payload.call?.duration,
+          endedReason: payload.call?.endedReason,
+          messages: payload.artifact?.messages,
+          transcript: payload.artifact?.transcript,
+          summary,
+          alerts
+        };
+
+        saveCall(callRecord);
+        console.log(`💾 Call saved — ID: ${callRecord.id}`);
         break;
+      }
 
       case 'status-update':
-        console.log(`📊 Call status: ${event.status}`);
+        console.log(`📊 Call status: ${payload.status}`);
+        break;
+
+      case 'hang':
+        console.log(`📵 User hung up — Call ID: ${payload.call?.id}`);
         break;
 
       default:
-        fastify.log.info({ type: event.type }, 'Unhandled VAPI event');
+        fastify.log.info({ type }, 'Unhandled VAPI event');
     }
 
     return reply.code(200).send({ received: true });
